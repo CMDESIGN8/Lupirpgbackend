@@ -9,92 +9,134 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-// ⚡ Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: "*", // puedes restringirlo a tu dominio de React
+    origin: "*", // Cambia a tu frontend si querés restringir
     methods: ["GET", "POST"],
   },
 });
 
-// 🔑 Supabase
+// Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_ANON_KEY
 );
 
-// Puerto dinámico para Render
 const PORT = process.env.PORT || 10000;
 
-// Almacén temporal de jugadores conectados
+// Jugadores conectados en memoria
 let players = {};
 
-// 🚀 Rutas básicas
+// Ruta de test
 app.get("/", (req, res) => {
-  res.send("LupiRPG Backend corriendo ✅");
+  res.send("LupiRPG Backend conectado a Supabase ✅");
 });
 
-// 🕹️ Eventos Socket.IO
+// SOCKET.IO
 io.on("connection", (socket) => {
   console.log(`🔌 Nuevo jugador conectado: ${socket.id}`);
 
-  // Nuevo jugador
-  socket.on("newPlayer", async (data) => {
-    const { userId, x, y } = data;
-
-    // Leer datos del usuario desde Supabase
-    const { data: user, error } = await supabase
-      .from("socios")
-      .select("id, nombre")
-      .eq("id", userId)
+  /**
+   * Un jugador entra en el juego
+   */
+  socket.on("newPlayer", async ({ userId, username, x, y, avatar_url }) => {
+    // Guardamos en Supabase (upsert → inserta si no existe, actualiza si existe)
+    const { data, error } = await supabase
+      .from("room_players")
+      .upsert({
+        user_id: userId,
+        username,
+        avatar_url,
+        x,
+        y,
+        last_activity: new Date().toISOString(),
+      })
+      .select()
       .single();
 
     if (error) {
-      console.error("❌ Error leyendo Supabase:", error.message);
+      console.error("❌ Error en Supabase:", error.message);
     }
 
+    // Guardamos también en memoria
     players[socket.id] = {
       id: socket.id,
       userId,
-      name: user?.nombre || "Jugador",
+      username,
+      avatar_url,
       x,
       y,
     };
 
-    console.log("✅ Jugador agregado:", players[socket.id]);
+    console.log("✅ Jugador conectado:", players[socket.id]);
 
     io.emit("updatePlayers", players);
   });
 
-  // Movimiento
-  socket.on("move", (pos) => {
+  /**
+   * Movimiento
+   */
+  socket.on("move", async ({ x, y }) => {
     if (players[socket.id]) {
-      players[socket.id].x = pos.x;
-      players[socket.id].y = pos.y;
+      players[socket.id].x = x;
+      players[socket.id].y = y;
+
+      // Persistir en Supabase
+      await supabase
+        .from("room_players")
+        .update({
+          x,
+          y,
+          last_activity: new Date().toISOString(),
+        })
+        .eq("user_id", players[socket.id].userId);
+
       io.emit("updatePlayers", players);
     }
   });
 
-  // Chat
-  socket.on("chatMessage", (msg) => {
+  /**
+   * Chat
+   */
+  socket.on("chatMessage", async (msg) => {
     if (players[socket.id]) {
       const message = {
-        user: players[socket.id].name,
+        user: players[socket.id].username,
         message: msg,
       };
+
+      // Guardar en DB
+      await supabase.from("room_messages").insert({
+        user_id: players[socket.id].userId,
+        username: players[socket.id].username,
+        content: msg,
+        room_id: "main_lobby",
+      });
+
       io.emit("chatMessage", message);
     }
   });
 
-  // Desconexión
-  socket.on("disconnect", () => {
+  /**
+   * Desconexión
+   */
+  socket.on("disconnect", async () => {
     console.log(`❌ Jugador desconectado: ${socket.id}`);
-    delete players[socket.id];
-    io.emit("updatePlayers", players);
+
+    if (players[socket.id]) {
+      // Marcar offline en Supabase
+      await supabase
+        .from("room_players")
+        .delete()
+        .eq("user_id", players[socket.id].userId);
+
+      delete players[socket.id];
+      io.emit("updatePlayers", players);
+    }
   });
 });
 
-// 🚀 Iniciar servidor
+// Start server
 server.listen(PORT, () => {
   console.log(`Servidor MMORPG corriendo en puerto ${PORT}`);
 });
