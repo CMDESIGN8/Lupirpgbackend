@@ -1,92 +1,100 @@
 import express from "express";
 import http from "http";
 import { Server } from "socket.io";
-import cors from "cors";
+import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
-import { supabase } from "./services/supabase.js";
 
 dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json());
-
 const server = http.createServer(app);
 
+// ⚡ Socket.IO
 const io = new Server(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
+    origin: "*", // puedes restringirlo a tu dominio de React
+    methods: ["GET", "POST"],
+  },
 });
 
-// RUTA DE PRUEBA
+// 🔑 Supabase
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
+
+// Puerto dinámico para Render
+const PORT = process.env.PORT || 10000;
+
+// Almacén temporal de jugadores conectados
+let players = {};
+
+// 🚀 Rutas básicas
 app.get("/", (req, res) => {
-  res.send("MMORPG Backend funcionando con Supabase + Socket.IO 🚀");
+  res.send("LupiRPG Backend corriendo ✅");
 });
 
-/**
- * SOCKET.IO LOGIC
- * Manejamos jugadores, movimientos, chat en tiempo real
- */
-let players = {}; // jugadores online en memoria
-
+// 🕹️ Eventos Socket.IO
 io.on("connection", (socket) => {
-  console.log(`Jugador conectado: ${socket.id}`);
+  console.log(`🔌 Nuevo jugador conectado: ${socket.id}`);
 
-  // Nuevo jugador entra
-  socket.on("newPlayer", async ({ userId, x, y }) => {
-    // Leemos datos del jugador desde Supabase
-    const { data, error } = await supabase
+  // Nuevo jugador
+  socket.on("newPlayer", async (data) => {
+    const { userId, x, y } = data;
+
+    // Leer datos del usuario desde Supabase
+    const { data: user, error } = await supabase
       .from("socios")
-      .select("*")
+      .select("id, nombre")
       .eq("id", userId)
       .single();
 
     if (error) {
-      console.error("Error al leer Supabase:", error.message);
-      return;
+      console.error("❌ Error leyendo Supabase:", error.message);
     }
 
     players[socket.id] = {
       id: socket.id,
-      userId: data.id,
-      name: data.nombre || "Jugador",
+      userId,
+      name: user?.nombre || "Jugador",
       x,
-      y
+      y,
     };
+
+    console.log("✅ Jugador agregado:", players[socket.id]);
 
     io.emit("updatePlayers", players);
   });
 
   // Movimiento
-  socket.on("move", ({ x, y }) => {
+  socket.on("move", (pos) => {
     if (players[socket.id]) {
-      players[socket.id].x = x;
-      players[socket.id].y = y;
+      players[socket.id].x = pos.x;
+      players[socket.id].y = pos.y;
       io.emit("updatePlayers", players);
     }
   });
 
   // Chat
   socket.on("chatMessage", (msg) => {
-    const player = players[socket.id];
-    io.emit("chatMessage", {
-      user: player?.name || "Anónimo",
-      message: msg
-    });
+    if (players[socket.id]) {
+      const message = {
+        user: players[socket.id].name,
+        message: msg,
+      };
+      io.emit("chatMessage", message);
+    }
   });
 
   // Desconexión
   socket.on("disconnect", () => {
-    console.log(`Jugador desconectado: ${socket.id}`);
+    console.log(`❌ Jugador desconectado: ${socket.id}`);
     delete players[socket.id];
     io.emit("updatePlayers", players);
   });
 });
 
-// PORT
-const PORT = process.env.PORT || 5000;
+// 🚀 Iniciar servidor
 server.listen(PORT, () => {
   console.log(`Servidor MMORPG corriendo en puerto ${PORT}`);
 });
