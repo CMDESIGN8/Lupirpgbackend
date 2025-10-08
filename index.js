@@ -16,7 +16,7 @@ const io = new Server(server, {
   },
 });
 
-// ✅ CONFIGURACIÓN CORRECTA DE SUPABASE - USANDO SERVICE ROLE KEY
+// ✅ CONFIGURACIÓN CORRECTA DE SUPABASE
 const supabase = createClient(
   "https://xvdevkrgsgiiqqhfnnut.supabase.co",
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh2ZGV2a3Jnc2dpaXFxaGZubnV0Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1NTczMzAwNCwiZXhwIjoyMDcxMzA5MDA0fQ.zE369eugKYtjIm6kw4Ecz77XpddfyIPr-dNoCQwaJh4"
@@ -27,7 +27,7 @@ const PORT = process.env.PORT || 5000;
 // Jugadores conectados en memoria
 let players = {};
 
-// Middleware para permitir CORS y JSON
+// Middleware
 app.use(express.json());
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
@@ -35,11 +35,314 @@ app.use((req, res, next) => {
   next();
 });
 
-// Ruta de test de Supabase
+// ==================== RUTAS DE INVENTARIO ====================
+
+// Obtener inventario de un jugador
+app.get("/api/inventory/:user_id", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+    
+    console.log(`📦 Solicitando inventario para usuario: ${user_id}`);
+
+    const { data: inventory, error } = await supabase
+      .from("player_items")
+      .select(`
+        *,
+        items (*)
+      `)
+      .eq("player_id", user_id);
+
+    if (error) {
+      console.error("❌ Error obteniendo inventario:", error.message);
+      return res.status(500).json({ 
+        success: false, 
+        error: error.message 
+      });
+    }
+
+    console.log(`✅ Inventario encontrado: ${inventory ? inventory.length : 0} items`);
+    
+    res.json({
+      success: true,
+      inventory: inventory || []
+    });
+
+  } catch (error) {
+    console.error("❌ Error en /api/inventory:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Obtener todos los items disponibles
+app.get("/api/items", async (req, res) => {
+  try {
+    const { data: items, error } = await supabase
+      .from("items")
+      .select("*")
+      .order("name", { ascending: true });
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      items: items || []
+    });
+  } catch (error) {
+    console.error("❌ Error obteniendo items:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Agregar item al inventario
+app.post("/api/inventory/add", async (req, res) => {
+  try {
+    const { player_id, item_id, is_equipped = false } = req.body;
+
+    console.log(`🎁 Agregando item ${item_id} al jugador ${player_id}`);
+
+    const { data, error } = await supabase
+      .from("player_items")
+      .insert({
+        player_id: player_id,
+        item_id: item_id,
+        is_equipped: is_equipped
+      })
+      .select(`
+        *,
+        items (*)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      message: "Item agregado al inventario",
+      item: data
+    });
+
+  } catch (error) {
+    console.error("❌ Error agregando item:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Equipar/Desequipar item
+app.put("/api/inventory/equip", async (req, res) => {
+  try {
+    const { player_item_id, equip } = req.body;
+
+    const { data, error } = await supabase
+      .from("player_items")
+      .update({ 
+        is_equipped: equip 
+      })
+      .eq("id", player_item_id)
+      .select(`
+        *,
+        items (*)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      message: equip ? "Item equipado" : "Item desequipado",
+      item: data
+    });
+
+  } catch (error) {
+    console.error("❌ Error equipando item:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ==================== RUTAS DE PLAYER ====================
+
+// Obtener datos del jugador
+app.get("/api/player/:user_id", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    const { data: player, error } = await supabase
+      .from("players")
+      .select(`
+        *,
+        player_stats (*),
+        player_skills (*)
+      `)
+      .eq("id", user_id)
+      .single();
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      player: player
+    });
+
+  } catch (error) {
+    console.error("❌ Error obteniendo jugador:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Obtener avatares del jugador
+app.get("/api/player/:user_id/avatars", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    const { data: avatars, error } = await supabase
+      .from("player_avatars")
+      .select(`
+        *,
+        avatars (*)
+      `)
+      .eq("player_id", user_id);
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      avatars: avatars || []
+    });
+
+  } catch (error) {
+    console.error("❌ Error obteniendo avatares:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ==================== RUTAS DE MISIONES ====================
+
+// Obtener misiones del jugador
+app.get("/api/player/:user_id/missions", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    const { data: missions, error } = await supabase
+      .from("player_missions")
+      .select(`
+        *,
+        missions (*)
+      `)
+      .eq("player_id", user_id);
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      missions: missions || []
+    });
+
+  } catch (error) {
+    console.error("❌ Error obteniendo misiones:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// Obtener todas las misiones disponibles
+app.get("/api/missions", async (req, res) => {
+  try {
+    const { data: missions, error } = await supabase
+      .from("missions")
+      .select("*")
+      .order("id", { ascending: true });
+
+    if (error) throw error;
+
+    res.json({
+      success: true,
+      missions: missions || []
+    });
+
+  } catch (error) {
+    console.error("❌ Error obteniendo misiones:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ==================== RUTAS DE CLUB ====================
+
+// Obtener club del jugador
+app.get("/api/player/:user_id/club", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    // Primero obtener el jugador con su club_id
+    const { data: player, error: playerError } = await supabase
+      .from("players")
+      .select("club_id")
+      .eq("id", user_id)
+      .single();
+
+    if (playerError) throw playerError;
+
+    if (!player.club_id) {
+      return res.json({
+        success: true,
+        club: null
+      });
+    }
+
+    // Obtener datos del club
+    const { data: club, error: clubError } = await supabase
+      .from("clubs")
+      .select(`
+        *,
+        club_missions (*),
+        club_messages (*)
+      `)
+      .eq("id", player.club_id)
+      .single();
+
+    if (clubError) throw clubError;
+
+    res.json({
+      success: true,
+      club: club
+    });
+
+  } catch (error) {
+    console.error("❌ Error obteniendo club:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ==================== RUTAS EXISTENTES ====================
+
 app.get("/test-supabase", async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from("room_players")
+      .from("players")
       .select("*")
       .limit(5);
 
@@ -63,11 +366,10 @@ app.get("/test-supabase", async (req, res) => {
   }
 });
 
-// Ruta para obtener todos los jugadores
 app.get("/players", async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from("room_players")
+      .from("players")
       .select("*");
 
     if (error) throw error;
@@ -84,7 +386,6 @@ app.get("/players", async (req, res) => {
   }
 });
 
-// Ruta para obtener mensajes del chat
 app.get("/messages", async (req, res) => {
   try {
     const { data, error } = await supabase
@@ -107,27 +408,35 @@ app.get("/messages", async (req, res) => {
   }
 });
 
-// Ruta principal
 app.get("/", (req, res) => {
   res.json({ 
     message: "🚀 LupiRPG Backend conectado a Supabase ✅",
     supabase: "Conectado correctamente",
-    players_online: Object.keys(players).length
+    players_online: Object.keys(players).length,
+    endpoints: {
+      inventory: "/api/inventory/:user_id",
+      items: "/api/items",
+      add_item: "/api/inventory/add",
+      equip_item: "/api/inventory/equip",
+      player: "/api/player/:user_id",
+      avatars: "/api/player/:user_id/avatars",
+      missions: "/api/player/:user_id/missions",
+      all_missions: "/api/missions",
+      club: "/api/player/:user_id/club"
+    }
   });
 });
 
-// SOCKET.IO
+// ==================== SOCKET.IO ====================
+
 io.on("connection", (socket) => {
   console.log(`🔌 Nuevo jugador conectado: ${socket.id}`);
 
-  /**
-   * Un jugador entra en el juego
-   */
   socket.on("newPlayer", async ({ userId, username, x, y, avatar_url }) => {
     try {
       console.log(`🎮 Nuevo jugador: ${username} (${userId})`);
 
-      // Guardamos en Supabase
+      // Usar room_players para la sala (como en tu schema)
       const { data, error } = await supabase
         .from("room_players")
         .upsert({
@@ -147,7 +456,20 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Guardamos también en memoria
+      // Actualizar también en room_users si existe
+      await supabase
+        .from("room_users")
+        .upsert({
+          user_id: userId,
+          name: username,
+          avatar_url: avatar_url || "default_avatar.png",
+          x: x || 100,
+          y: y || 100,
+          is_online: true,
+          last_activity: new Date().toISOString(),
+          connection_id: socket.id
+        });
+
       players[socket.id] = {
         id: socket.id,
         userId: userId,
@@ -160,7 +482,6 @@ io.on("connection", (socket) => {
 
       console.log(`✅ Jugador ${username} guardado en Supabase`);
       
-      // Emitir a todos los clientes
       io.emit("updatePlayers", players);
       io.emit("playerJoined", { 
         player: players[socket.id],
@@ -173,19 +494,24 @@ io.on("connection", (socket) => {
     }
   });
 
-  /**
-   * Movimiento del jugador
-   */
   socket.on("move", async ({ x, y }) => {
     try {
       if (players[socket.id]) {
-        // Actualizar en memoria
         players[socket.id].x = x;
         players[socket.id].y = y;
 
-        // Persistir en Supabase
         const { error } = await supabase
           .from("room_players")
+          .update({
+            x: x,
+            y: y,
+            last_activity: new Date().toISOString(),
+          })
+          .eq("user_id", players[socket.id].userId);
+
+        // Actualizar también en room_users
+        await supabase
+          .from("room_users")
           .update({
             x: x,
             y: y,
@@ -198,7 +524,6 @@ io.on("connection", (socket) => {
           return;
         }
 
-        // Emitir a todos los clientes excepto al que se movió
         socket.broadcast.emit("playerMoved", {
           playerId: socket.id,
           x: x,
@@ -210,9 +535,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  /**
-   * Mensaje de chat
-   */
   socket.on("chatMessage", async (msg) => {
     try {
       if (players[socket.id]) {
@@ -223,7 +545,6 @@ io.on("connection", (socket) => {
           timestamp: new Date().toISOString()
         };
 
-        // Guardar en Supabase
         const { error } = await supabase
           .from("room_messages")
           .insert({
@@ -239,7 +560,6 @@ io.on("connection", (socket) => {
           return;
         }
 
-        // Emitir a todos los clientes
         io.emit("chatMessage", messageData);
         console.log(`💬 Chat: ${players[socket.id].username}: ${msg}`);
       }
@@ -248,9 +568,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  /**
-   * Desconexión del jugador
-   */
   socket.on("disconnect", async () => {
     try {
       console.log(`❌ Jugador desconectado: ${socket.id}`);
@@ -258,17 +575,25 @@ io.on("connection", (socket) => {
       if (players[socket.id]) {
         const playerName = players[socket.id].username;
         
-        // Eliminar de Supabase
+        // Marcar como offline en room_players
         const { error } = await supabase
           .from("room_players")
           .delete()
+          .eq("user_id", players[socket.id].userId);
+
+        // Marcar como offline en room_users
+        await supabase
+          .from("room_users")
+          .update({
+            is_online: false,
+            last_activity: new Date().toISOString()
+          })
           .eq("user_id", players[socket.id].userId);
 
         if (error) {
           console.error("❌ Error en Supabase (disconnect):", error.message);
         }
 
-        // Eliminar de memoria y notificar
         delete players[socket.id];
         
         io.emit("playerLeft", { 
@@ -286,26 +611,18 @@ io.on("connection", (socket) => {
     }
   });
 
-  /**
-   * Ping para mantener conexión
-   */
   socket.on("ping", () => {
     socket.emit("pong", { timestamp: new Date().toISOString() });
   });
-});
-
-// Manejo de errores global
-process.on("uncaughtException", (error) => {
-  console.error("🔥 Error no capturado:", error);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("🔥 Promise rechazada no manejada:", reason);
 });
 
 // Iniciar servidor
 server.listen(PORT, () => {
   console.log(`🎮 Servidor LupiRPG corriendo en puerto ${PORT}`);
   console.log(`🔗 Supabase: Conectado correctamente`);
+  console.log(`📦 Sistema de inventario ACTIVO`);
+  console.log(`🎯 Sistema de misiones ACTIVO`);
+  console.log(`🏆 Sistema de clubes ACTIVO`);
   console.log(`📊 Ruta de test: http://localhost:${PORT}/test-supabase`);
+  console.log(`🎒 Ejemplo inventario: http://localhost:${PORT}/api/inventory/TU_USER_ID`);
 });
