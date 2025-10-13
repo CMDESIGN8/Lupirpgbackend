@@ -6,6 +6,7 @@ import playerRoutes from "./routes/playerRoutes.js";
 import inventoryRoutes from "./routes/inventoryRoutes.js";
 import missionRoutes from "./routes/missionRoutes.js";
 import itemRoutes from "./routes/itemRoutes.js";
+import playerItemsRoutes from "./routes/playerItemsRoutes.js";
 
 dotenv.config();
 const app = express();
@@ -20,5 +21,6 @@ app.use("/api/player", playerRoutes);
 app.use("/api/inventory", inventoryRoutes);
 app.use("/api/missions", missionRoutes);
 app.use("/api/items", itemRoutes);
+app.use("/api/inventory", playerItemsRoutes);
 
 app.listen(PORT, () => console.log(`🚀 Servidor corriendo en puerto ${PORT}`));
