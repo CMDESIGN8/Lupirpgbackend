@@ -17,7 +17,6 @@ app.use(express.json());
 app.get("/", (req, res) => res.send("✅ LupiApp Backend activo con Supabase"));
 
 app.use("/api/player", playerRoutes);
-app.use("/api/inventory", inventoryRoutes);
 app.use("/api/missions", missionRoutes);
 app.use("/api/items", itemRoutes);
 app.use("/api/inventory", playerItemsRoutes);
