@@ -3,7 +3,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 
 import playerRoutes from "./routes/playerRoutes.js";
-import inventoryRoutes from "./routes/inventoryRoutes.js";
 import missionRoutes from "./routes/missionRoutes.js";
 import itemRoutes from "./routes/itemRoutes.js";
 import playerItemsRoutes from "./routes/playerItemsRoutes.js";
